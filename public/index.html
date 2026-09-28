@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Deific Digital - AI Receptionist</title>
+<style>
+  :root {
+    --primary: #0d6e6e;
+    --primary-dark: #095454;
+    --bg: #f4f7f7;
+    --bubble-ai: #e8f3f3;
+    --bubble-user: #0d6e6e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 24px 16px;
+  }
+  header { text-align: center; margin-bottom: 16px; }
+  header h1 { font-size: 1.4rem; margin: 0 0 4px; color: var(--primary-dark); }
+  header p { margin: 0; color: #555; font-size: 0.9rem; }
+
+  #chat {
+    width: 100%;
+    max-width: 520px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 0;
+    overflow-y: auto;
+  }
+  .bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+  .bubble.ai {
+    background: var(--bubble-ai);
+    color: #063b3b;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  .bubble.ai { cursor: pointer; }
+  .bubble.ai::after { content: ' 🔊'; opacity: 0.45; font-size: 0.8em; }
+  #micBtn.speaking { background: #e08a00; }
+  #voiceInfo { font-size: 0.72rem; color: #888; text-align: center; min-height: 14px; }
+  .bubble.user {
+    background: var(--bubble-user);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.system {
+    align-self: center;
+    background: #fff3cd;
+    color: #7a5b00;
+    font-size: 0.85rem;
+  }
+
+  #controls {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: 12px;
+  }
+  #micBtn {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: white;
+    font-size: 28px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(13,110,110,0.35);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  #micBtn:hover { background: var(--primary-dark); }
+  #micBtn.listening {
+    background: #d1453b;
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(209,69,59,0.5); }
+    70% { box-shadow: 0 0 0 16px rgba(209,69,59,0); }
+    100% { box-shadow: 0 0 0 0 rgba(209,69,59,0); }
+  }
+  #status { font-size: 0.85rem; color: #555; min-height: 18px; text-align: center; }
+  #textRow { width: 100%; display: flex; gap: 8px; }
+  #textInput {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    font-size: 16px; /* 16px stops iOS Safari from zooming on focus */
+    border: 1px solid #c9d6d6;
+    border-radius: 24px;
+    outline: none;
+    background: white;
+  }
+  #textInput:focus { border-color: var(--primary); }
+  #sendBtn {
+    padding: 0 18px;
+    border: none;
+    border-radius: 24px;
+    background: var(--primary);
+    color: white;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  #resetBtn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  #unsupported {
+    display: none;
+    max-width: 520px;
+    background: #ffe0e0;
+    color: #7a0000;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💻 Deific Digital — AI Receptionist</h1>
+  <p>Tap the mic and talk. Every conversation is saved to the database.</p>
+</header>
+
+<div id="unsupported">
+  Is browser me mic (speech recognition) support nahi hai — aap neeche type karke baat kar sakte ho.
+  Mic ke liye <strong>Chrome / Edge / Firefox / Safari</strong> ka naya version use karo (HTTPS link pe).
+</div>
+
+<div id="chat"></div>
+
+<div id="controls">
+  <button id="micBtn">🎤</button>
+  <div id="status">Tap the mic to start talking</div>
+  <div id="voiceInfo"></div>
+  <div id="textRow">
+    <input id="textInput" type="text" placeholder="Ya yahan type karein..." autocomplete="off" enterkeyhint="send" />
+    <button id="sendBtn">Send</button>
+  </div>
+  <button id="resetBtn">Start a new conversation</button>
+</div>
+
+<script>
+const chatEl = document.getElementById('chat');
+const micBtn = document.getElementById('micBtn');
+const statusEl = document.getElementById('status');
+const resetBtn = document.getElementById('resetBtn');
+const unsupportedEl = document.getElementById('unsupported');
+const textInput = document.getElementById('textInput');
+const sendBtn = document.getElementById('sendBtn');
+const voiceInfoEl = document.getElementById('voiceInfo');
+
+// ---------- Test helpers (URL flags) ----------
+//  ?engine=sr -> force the old browser SpeechRecognition engine (recorder is the default everywhere)
+//  ?debug=1  -> on-screen log panel (useful on an iPhone where there is no console)
+const QS = new URLSearchParams(location.search);
+const DEBUG = QS.get('debug') === '1';
+let dbgBox = null, dbgLevelEl = null;
+if (DEBUG) {
+  dbgBox = document.createElement('div');
+  dbgBox.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:34vh;overflow:auto;background:rgba(0,0,0,.86);' +
+    'color:#9fe;font:11px/1.35 ui-monospace,Menlo,monospace;padding:6px 8px;z-index:9999;white-space:pre-wrap;';
+  dbgLevelEl = document.createElement('div');
+  dbgLevelEl.style.cssText = 'color:#ff9;position:sticky;top:0;background:#000;padding-bottom:2px;';
+  dbgBox.appendChild(dbgLevelEl);
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(dbgBox));
+  window.addEventListener('error', (e) => dbg('JS ERROR: ' + e.message));
+  window.addEventListener('unhandledrejection', (e) => dbg('PROMISE ERROR: ' + (e.reason && e.reason.message || e.reason)));
+}
+function dbg(msg) {
+  if (!DEBUG || !dbgBox) return;
+  const t = new Date().toISOString().slice(14, 23);
+  const line = document.createElement('div');
+  line.textContent = t + '  ' + msg;
+  dbgBox.appendChild(line);
+  dbgBox.scrollTop = dbgBox.scrollHeight;
+}
+function dbgLevel(msg) { if (dbgLevelEl) dbgLevelEl.textContent = msg; }
+
+// ---------- Pronunciation fixes (only changes what is SPOKEN, screen text stays the same) ----------
+// If a word sounds wrong, add/edit a line here. `en` is used for English/Hinglish voice, `hi` for Hindi voice.
+const PRONUNCIATIONS = [
+  { pattern: /Deific/gi, en: 'Dayfik', hi: 'डेफिक' },
+];
+function forSpeech(text, lang) {
+  let out = text;
+  for (const p of PRONUNCIATIONS) out = out.replace(p.pattern, lang === 'hi-IN' ? p.hi : p.en);
+  return out;
+}
+
+function newSessionId() {
+  // crypto.randomUUID only exists on HTTPS / newer browsers, so keep a fallback for phones
+  if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'sess-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+const hasTTS = 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- Server voice (same Indian voice on every device) ----------
+// One reusable <audio> element: once it is "unlocked" by a tap, phones let us play into it later.
+const ttsAudio = typeof Audio !== 'undefined' ? new Audio() : null;
+let serverTTS = true;      // turns false if the server voice keeps failing -> browser voice is used
+let ttsFailures = 0;
+let stopCurrentAudio = null;
+let silentUrlCache = null;
+
+function silentUrl() {
+  if (silentUrlCache) return silentUrlCache;
+  const rate = 8000, n = 800; // 0.1s of silence (8-bit PCM WAV)
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  w(36, 'data'); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  silentUrlCache = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  return silentUrlCache;
+}
+
+let sessionId = newSessionId();
+let listening = false;
+let started = false;
+let busy = false;          // waiting for the AI's reply from the server
+let isSpeaking = false;    // AI voice is playing right now
+let speakToken = 0;        // bumping this cancels any speak() loop in progress
+let cachedVoices = [];
+
+if (hasTTS) loadVoices().then((v) => { cachedVoices = v; });
+
+function setSpeaking(v) {
+  isSpeaking = v;
+  micBtn.classList.toggle('speaking', v);
+  if (!listening) micBtn.textContent = v ? '⏹' : '🎤';
+  if (v) statusEl.textContent = 'Bol rahi hoon... rokne ke liye mic tap karein';
+}
+
+function addBubble(role, text) {
+  const div = document.createElement('div');
+  div.className = 'bubble ' + role;
+  div.textContent = text;
+  if (role === 'ai') {
+    div.title = 'Tap to listen';
+    div.addEventListener('click', () => { unlockSpeech(); speak(text); });
+  }
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function loadVoices() {
+  return new Promise((resolve) => {
+    let voices = window.speechSynthesis.getVoices();
+    if (voices.length) {
+      resolve(voices);
+      return;
+    }
+    window.speechSynthesis.onvoiceschanged = () => {
+      resolve(window.speechSynthesis.getVoices());
+    };
+    // some phones never fire voiceschanged — don't hang forever
+    setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1500);
+  });
+}
+
+// Devanagari text -> Hindi voice. Everything else (English/Hinglish in Roman letters) -> Indian English voice.
+function detectSpeechLang(text) {
+  return /[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-IN';
+}
+
+function normLang(l) { return (l || '').replace('_', '-'); } // Android reports hi_IN
+
+// Try to find a female, Indian-accented voice for the given target language.
+// Edge ships "Microsoft Neerja" (en-IN) and "Microsoft Swara" (hi-IN) which are the best bet;
+// Chrome/Android usually offers "Google हिन्दी" and sometimes an en-IN "Veena"-style voice.
+function pickFemaleVoice(voices, targetLang) {
+  const femaleHints = [
+    'neerja', 'swara', 'heera', 'kalpana', 'lekha', 'veena', 'priya', 'female',
+    'google हिन्दी', 'zira', 'samantha', 'moira', 'tessa',
+  ];
+
+  const exactLang = voices.filter((v) => normLang(v.lang).toLowerCase() === targetLang.toLowerCase());
+  const indianLang = voices.filter((v) => /^(hi-in|en-in)$/i.test(normLang(v.lang)));
+
+  for (const pool of [exactLang, indianLang, voices]) {
+    if (!pool.length) continue;
+    const match = pool.find((v) => femaleHints.some((h) => v.name.toLowerCase().includes(h)));
+    if (match) return match;
+  }
+
+  const fallbackPool = indianLang.length ? indianLang : voices;
+  return fallbackPool.find((v) => !/male/i.test(v.name)) || fallbackPool[0] || voices[0] || null;
+}
+
+function speakChunk(text, voice, lang) {
+  return new Promise((resolve) => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0;
+    u.pitch = 1.05; // slightly higher pitch reads more feminine on voices without gender info
+    u.lang = lang;
+    if (voice) u.voice = voice;
+    let done = false;
+    const finish = (ok, err) => { if (!done) { done = true; resolve({ ok, err }); } };
+    u.onend = () => finish(true);
+    u.onerror = (e) => finish(false, e && e.error);
+    setTimeout(() => finish(true), 15000); // never hang if a phone skips onend
+    window.speechSynthesis.speak(u);
+  });
+}
+
+// Stops the AI voice immediately (and stops any speak() loop still queued).
+function interruptSpeech() {
+  speakToken++;
+  if (stopCurrentAudio) stopCurrentAudio();
+  if (hasTTS) window.speechSynthesis.cancel();
+  setSpeaking(false);
+}
+
+function playAudio(url) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      ttsAudio.onended = null;
+      ttsAudio.onerror = null;
+      stopCurrentAudio = null;
+      resolve(r);
+    };
+    stopCurrentAudio = () => { try { ttsAudio.pause(); } catch (e) {} finish('interrupted'); };
+    ttsAudio.onended = () => finish('ended');
+    ttsAudio.onerror = () => finish('error');
+    ttsAudio.src = url;
+    const p = ttsAudio.play();
+    if (p && p.catch) p.catch(() => finish('blocked'));
+  });
+}
+
+// Plays the reply using the server's Indian voice. Returns 'done' | 'interrupted' | 'fallback'.
+async function speakServer(text) {
+  const myToken = ++speakToken;
+  const lang = detectSpeechLang(text);
+  const spoken = forSpeech(text, lang);
+
+  let blob, voiceName;
+  try {
+    const res = await fetch('/web/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: spoken, lang }),
+    });
+    if (!res.ok) throw new Error('tts ' + res.status);
+    voiceName = res.headers.get('X-Voice');
+    blob = await res.blob();
+  } catch (err) {
+    console.error('Server voice failed:', err);
+    if (++ttsFailures >= 2) serverTTS = false; // give up and use the browser voice
+    return 'fallback';
+  }
+  ttsFailures = 0;
+  if (myToken !== speakToken) return 'interrupted';
+
+  const url = URL.createObjectURL(blob);
+  voiceInfoEl.textContent = 'Voice: ' + (voiceName || 'server voice');
+  setSpeaking(true);
+  const result = await playAudio(url);
+  URL.revokeObjectURL(url);
+
+  if (myToken !== speakToken) return 'interrupted';
+  setSpeaking(false);
+  return result === 'ended' ? 'done' : 'fallback'; // blocked/error -> try the browser voice
+}
+
+// Returns true if the AI finished the whole reply, false if it was interrupted.
+async function speak(text) {
+  if (!text) return true;
+  if (serverTTS && ttsAudio) {
+    const r = await speakServer(text);
+    if (r === 'done') return true;
+    if (r === 'interrupted') return false;
+  }
+  return speakBrowser(text);
+}
+
+// Fallback: the phone/laptop's own built-in voice.
+async function speakBrowser(text) {
+  if (!hasTTS || !text) return true;
+  const synth = window.speechSynthesis;
+  const myToken = ++speakToken;
+
+  let voices = synth.getVoices();
+  if (!voices.length) voices = await loadVoices();
+  cachedVoices = voices;
+  if (myToken !== speakToken) return false;
+
+  const targetLang = detectSpeechLang(text);
+  const spoken = forSpeech(text, targetLang);
+  const voice = pickFemaleVoice(voices, targetLang);
+  const lang = voice ? normLang(voice.lang) : targetLang;
+  voiceInfoEl.textContent = voice
+    ? 'Voice: ' + voice.name + ' (' + voice.lang + ')'
+    : 'Voice: device default (' + voices.length + ' voices found)';
+
+  // cancel() immediately followed by speak() gets dropped on Chrome/Android — leave a gap
+  if (synth.speaking || synth.pending) {
+    synth.cancel();
+    await sleep(120);
+    if (myToken !== speakToken) return false;
+  }
+  if (synth.paused) synth.resume();
+
+  setSpeaking(true);
+
+  // Speak sentence by sentence: long text silently cuts off on some Android engines
+  const chunks = spoken.match(/[^.!?।\n]+[.!?।]*/g) || [spoken];
+  for (const c of chunks) {
+    if (myToken !== speakToken) return false; // user interrupted
+    const t = c.trim();
+    if (!t) continue;
+    let r = await speakChunk(t, voice, lang);
+    if (myToken !== speakToken) return false;
+    if (!r.ok) r = await speakChunk(t, null, targetLang); // retry with the device's default voice
+    if (!r.ok) {
+      voiceInfoEl.textContent =
+        'Awaaz play nahi hui (' + (r.err || 'unknown') + ') — media volume / silent mode check karein, phir bubble pe tap karein';
+      break;
+    }
+  }
+
+  if (myToken === speakToken) {
+    setSpeaking(false);
+    return true;
+  }
+  return false;
+}
+
+// iOS/Android only allow speech after a real tap. Call this synchronously inside a click
+// handler so later (async) speak() calls are allowed.
+let speechUnlocked = false;
+function unlockSpeech() {
+  if (speechUnlocked) return; // once is enough; doing it on every mic tap breaks the mic on iOS
+  speechUnlocked = true;
+  if (ttsAudio) {
+    try {
+      ttsAudio.src = silentUrl();
+      const p = ttsAudio.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+  }
+  if (!hasTTS) return;
+  try {
+    const u = new SpeechSynthesisUtterance('.');
+    u.volume = 0.01;
+    window.speechSynthesis.speak(u);
+    window.speechSynthesis.resume();
+  } catch (e) {}
+}
+
+async function startConversation() {
+  if (started) return;
+  started = true; // set early so double taps don't create two conversations
+  statusEl.textContent = 'Connecting...';
+  try {
+    const res = await fetch('/web/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
+    const data = await res.json();
+    if (data.error || !data.reply) throw new Error(data.error || 'empty reply');
+    addBubble('ai', data.reply);
+    const finished = await speak(data.reply);
+    if (finished) {
+      statusEl.textContent = 'Tap the mic to reply';
+      autoListen();
+    }
+  } catch (err) {
+    started = false;
+    addBubble('system', 'Could not reach the server. Is it running?');
+    console.error(err);
+    statusEl.textContent = 'Tap the mic to retry';
+  }
+}
+
+async function sendMessage(text, opts = {}) {
+  const auto = opts.auto !== false;
+  busy = true;
+  interruptSpeech(); // if the AI was still talking, stop it now
+  addBubble('user', text);
+  statusEl.textContent = 'Thinking...';
+  let data;
+  try {
+    const res = await fetch('/web/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, message: text }),
+    });
+    data = await res.json();
+  } catch (err) {
+    busy = false;
+    addBubble('system', 'Could not reach the server.');
+    console.error(err);
+    statusEl.textContent = 'Tap the mic to retry';
+    return;
+  }
+  busy = false;
+
+  if (data.error) {
+    addBubble('system', 'Error: ' + data.error);
+    statusEl.textContent = 'Something went wrong — tap mic to retry';
+    return;
+  }
+  addBubble('ai', data.reply);
+  if (data.leadCaptured) {
+    addBubble('system', '✅ Lead saved to database');
+  }
+  const finished = await speak(data.reply);
+  if (finished) {
+    statusEl.textContent = 'Tap the mic to reply';
+    if (auto && !data.leadCaptured) autoListen();
+  }
+}
+
+// ---------- Speech recognition ----------
+// iOS Safari notes (why this looks defensive):
+//  - a reused SpeechRecognition object gets stuck after a few turns -> we create a FRESH one every time
+//  - recognition.start() outside a tap is unreliable on iOS -> no auto-listen there, user taps the mic
+//  - iOS never fires onend/onerror when the mic gets stuck -> a watchdog resets everything
+//  - audio playback keeps the iOS audio session in "playback" mode -> we release the <audio> before listening
+const IS_IOS = QS.get('ios') === '1' || /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const REC_TIMEOUT_MS = 15000;
+let recognition = null;
+let recWatchdog = null;
+
+function clearWatchdog() { clearTimeout(recWatchdog); recWatchdog = null; }
+
+function resetListeningUI() {
+  clearWatchdog();
+  listening = false;
+  micBtn.classList.remove('listening');
+  micBtn.textContent = isSpeaking ? '⏹' : '🎤';
+}
+
+// Hard-stop and forget the current recognition object (safe to call any time).
+function killRecognition() {
+  const old = recognition;
+  recognition = null;
+  if (old) {
+    old.onstart = old.onresult = old.onerror = old.onend = null;
+    try { old.abort(); } catch (e) {}
+  }
+  resetListeningUI();
+}
+
+// Free the audio session so the mic can capture properly (matters on iOS).
+function releaseAudioForMic() {
+  if (ttsAudio) {
+    try { ttsAudio.pause(); ttsAudio.removeAttribute('src'); ttsAudio.load(); } catch (e) {}
+  }
+  if (hasTTS) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+}
+
+function startRec() {
+  if (!SR || listening || busy) return;
+  killRecognition();     // never reuse an old object
+  releaseAudioForMic();
+
+  const rec = new SR();
+  rec.lang = 'en-IN';
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onstart = () => {
+    if (rec !== recognition) return;
+    listening = true;
+    micBtn.classList.add('listening');
+    micBtn.textContent = '🎤';
+    statusEl.textContent = 'Listening... speak now';
+  };
+
+  rec.onresult = (event) => {
+    if (rec !== recognition) return;
+    clearWatchdog();
+    const transcript = (event.results[0] && event.results[0][0] && event.results[0][0].transcript || '').trim();
+    if (transcript) sendMessage(transcript);
+  };
+
+  rec.onerror = (event) => {
+    if (rec !== recognition) return;
+    clearWatchdog();
+    console.error('Speech recognition error:', event.error);
+    dbg('SR error: ' + event.error);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+      statusEl.textContent = window.isSecureContext
+        ? 'Mic permission blocked — browser settings me mic allow karein, ya type karein'
+        : 'Mic ke liye HTTPS link chahiye — ya neeche type karein';
+    } else if (event.error === 'no-speech') {
+      statusEl.textContent = 'Kuch sunai nahi diya — mic dobara tap karein';
+    } else if (event.error !== 'aborted') {
+      statusEl.textContent = 'Mic error (' + event.error + ') — tap to retry, ya type karein';
+    }
+  };
+
+  rec.onend = () => {
+    if (rec !== recognition) return;
+    recognition = null; // next turn gets a brand-new object
+    resetListeningUI();
+  };
+
+  recognition = rec;
+  // Watchdog: if iOS gets stuck on "Listening..." with no result and no end event, recover by itself
+  recWatchdog = setTimeout(() => {
+    if (rec !== recognition) return;
+    killRecognition();
+    statusEl.textContent = 'Mic ne response nahi diya — mic dobara tap karein';
+  }, REC_TIMEOUT_MS);
+
+  try {
+    rec.start();
+  } catch (e) {
+    console.error(e);
+    killRecognition();
+    statusEl.textContent = 'Mic start nahi hua — dobara tap karein';
+  }
+}
+function startRecSafe() {
+  try { startRec(); } catch (e) { console.error(e); }
+}
+// ---------- Hands-free recorder engine (DEFAULT on every device) ----------
+// One engine for Android, iPhone, Mac, Windows, Linux (Chrome, Safari, Edge, Firefox) so behaviour is identical.
+// (Browser SpeechRecognition differs per browser and can't start without a tap on iOS.)
+// The first tap opens the mic We then record by ourselves, detect silence, and send the audio to the
+// server (/web/stt -> Groq Whisper). Starting a MediaRecorder on an already-open stream needs no tap.
+// ?engine=sr forces the old browser SpeechRecognition (only for comparing/debugging)
+let USE_REC = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && QS.get('engine') !== 'sr';
+let sttFailures = 0;
+dbg('engine=' + (USE_REC ? 'RECORDER (default, all devices)' : SR ? 'SpeechRecognition (fallback)' : 'none') + ' | iOS=' + IS_IOS + ' | secure=' + window.isSecureContext);
+const VAD = { frameMs: 50, calibrateMs: 400, minSpeechMs: 150, endSilenceMs: 1300, noSpeechMs: 12000, maxMs: 25000 };
+let micStream = null, audioCtx = null, analyser = null;
+let mediaRec = null, recChunks = [], vadTimer = null, recDiscard = false;
+
+async function ensureMicStream() {
+  if (micStream && micStream.active && micStream.getAudioTracks().some((t) => t.readyState === 'live')) return true;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    audioCtx.createMediaStreamSource(micStream).connect(analyser); // not connected to speakers
+    dbg('mic stream opened, audioCtx=' + audioCtx.state);
+    return true;
+  } catch (err) {
+    console.error('getUserMedia failed:', err);
+    dbg('getUserMedia FAILED: ' + (err && err.name) + ' ' + (err && err.message));
+    micStream = null;
+    statusEl.textContent = 'Mic permission chahiye — Settings me allow karein, ya neeche type karein';
+    return false;
+  }
+}
+
+function currentRms() {
+  const buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+  return Math.sqrt(sum / buf.length);
+}
+
+function pickRecMime() {
+  const opts = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+  return opts.find((m) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+}
+
+function stopVad() { clearInterval(vadTimer); vadTimer = null; }
+
+function startRecorderListen() {
+  if (!USE_REC || listening || busy || isSpeaking) return;
+  if (!micStream || !micStream.active) { statusEl.textContent = 'Mic tap karke start karein'; return; }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+
+  recChunks = [];
+  recDiscard = false;
+  const mime = pickRecMime();
+  try {
+    mediaRec = new MediaRecorder(micStream, mime ? { mimeType: mime } : undefined);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Recorder start nahi hua — mic dobara tap karein';
+    return;
+  }
+  const rec = mediaRec;
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  rec.onstop = () => handleRecorded(rec);
+  rec.start(250);
+  dbg('recording started, mime=' + (rec.mimeType || mime || 'default'));
+
+  listening = true;
+  micBtn.classList.add('listening');
+  micBtn.textContent = '🎤';
+  statusEl.textContent = 'Listening... speak now';
+
+  // --- voice activity detection: adaptive threshold, ends after ~1.3s of silence ---
+  const t0 = Date.now();
+  let floor = 0, floorN = 0, speechFrames = 0, spoke = false, lastVoice = 0;
+  vadTimer = setInterval(() => {
+    const now = Date.now(), el = now - t0, rms = currentRms();
+    if (el < VAD.calibrateMs) { floor += rms; floorN++; return; }
+    const threshold = Math.max(0.02, (floorN ? floor / floorN : 0) * 3);
+    dbgLevel('rms=' + rms.toFixed(3) + '  thr=' + threshold.toFixed(3) + '  spoke=' + spoke + '  t=' + (el / 1000).toFixed(1) + 's');
+    if (rms > threshold) {
+      speechFrames++; lastVoice = now;
+      if (!spoke && speechFrames * VAD.frameMs >= VAD.minSpeechMs) { spoke = true; dbg('speech detected'); statusEl.textContent = 'Sun rahi hoon...'; }
+    } else if (!spoke) {
+      speechFrames = 0;
+    }
+    if (spoke && now - lastVoice > VAD.endSilenceMs) { stopRecorder(false); }
+    else if (!spoke && el > VAD.noSpeechMs) { stopRecorder(true); statusEl.textContent = 'Kuch sunai nahi diya — mic dobara tap karein'; }
+    else if (el > VAD.maxMs) { stopRecorder(false); }
+  }, VAD.frameMs);
+}
+
+function stopRecorder(discard) {
+  stopVad();
+  recDiscard = !!discard;
+  if (mediaRec && mediaRec.state !== 'inactive') { try { mediaRec.stop(); } catch (e) {} }
+  else { listening = false; micBtn.classList.remove('listening'); micBtn.textContent = isSpeaking ? '⏹' : '🎤'; }
+}
+
+async function handleRecorded(rec) {
+  listening = false;
+  micBtn.classList.remove('listening');
+  micBtn.textContent = isSpeaking ? '⏹' : '🎤';
+  if (rec !== mediaRec) return;
+  mediaRec = null;
+  const blob = new Blob(recChunks, { type: rec.mimeType || 'audio/mp4' });
+  recChunks = [];
+  dbg('recording stopped: ' + blob.size + ' bytes, ' + blob.type + (recDiscard ? ' (discarded)' : ''));
+  if (recDiscard || blob.size < 2000) return;
+
+  busy = true;
+  statusEl.textContent = 'Samajh rahi hoon...';
+  let text = '';
+  try {
+    const res = await fetch('/web/stt', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    text = (data.text || '').trim();
+    dbg('STT text: "' + text + '"');
+  } catch (err) {
+    console.error('STT failed:', err);
+    dbg('STT FAILED: ' + err.message);
+    busy = false;
+    if (++sttFailures >= 2 && SR) {
+      USE_REC = false; // server speech-to-text keeps failing -> use the browser's own recognition
+      statusEl.textContent = 'Server voice-recognition down hai — browser mic use kar rahi hoon, mic tap karein';
+      dbg('switched to SpeechRecognition fallback');
+    } else {
+      statusEl.textContent = 'Awaaz samajh nahi aayi — mic dobara tap karein, ya type karein';
+    }
+    return;
+  }
+  sttFailures = 0;
+  busy = false;
+  if (!text) {
+    statusEl.textContent = 'Samajh nahi aaya — dobara boliye';
+    autoListen(); // stay hands-free: just listen again
+    return;
+  }
+  sendMessage(text);
+}
+
+// After the AI finishes talking, start listening on its own.
+//  - default: recorder engine (mic stream is already open from the first tap)
+//  - fallback (no MediaRecorder / server STT down): browser SpeechRecognition
+function autoListen() {
+  dbg('autoListen()');
+  if (USE_REC) { setTimeout(startRecorderListen, 400); return; } // 0.4s gap: don't hear the tail of her own voice
+  if (IS_IOS) return;                                             // iOS SpeechRecognition needs a real tap
+  if (!SR || listening || busy || isSpeaking) return;
+  startRecSafe();
+}
+
+if (!SR && !USE_REC) {
+  unsupportedEl.style.display = 'block';
+  micBtn.style.display = 'none';
+}
+
+micBtn.addEventListener('click', async () => {
+  if (!SR && !USE_REC) return;
+  unlockSpeech(); // must run synchronously inside the tap (only does work the first time)
+
+  if (isSpeaking) interruptSpeech();    // tap while the AI talks = stop her right away
+
+  if (USE_REC) {
+    if (listening) { stopRecorder(false); return; }   // tap = "I'm done talking", send it now
+    if (busy) return;
+    if (!(await ensureMicStream())) return;           // first tap: asks permission, then stays open
+    if (!started) { startConversation(); return; }    // greeting, then it listens by itself
+    startRecorderListen();
+    return;
+  }
+
+  if (listening) {
+    // stop() delivers what was said so far; if the mic is stuck and nothing comes back, force-reset
+    try { recognition && recognition.stop(); } catch (e) {}
+    setTimeout(() => {
+      if (listening) { killRecognition(); statusEl.textContent = 'Tap the mic to reply'; }
+    }, 1500);
+    return;
+  }
+  if (busy) return;
+
+  if (!started) {
+    startConversation();                // greeting; the mic turns on by itself after she finishes
+    return;
+  }
+  startRecSafe();
+});
+
+async function submitTyped() {
+  const text = textInput.value.trim();
+  if (!text) return;
+  textInput.value = '';
+  unlockSpeech();
+  interruptSpeech();
+  if (listening) { if (USE_REC) stopRecorder(true); else killRecognition(); }
+  if (!started) await startConversation();
+  sendMessage(text, { auto: false });
+}
+sendBtn.addEventListener('click', submitTyped);
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitTyped(); }
+});
+
+resetBtn.addEventListener('click', () => {
+  killRecognition();
+  stopRecorder(true);
+  interruptSpeech();
+  busy = false;
+  sessionId = newSessionId();
+  started = false;
+  chatEl.innerHTML = '';
+  statusEl.textContent = 'Tap the mic to start talking';
+});
+
+if (!window.isSecureContext) {
+  addBubble('system', 'Note: mic sirf HTTPS link pe chalta hai. Abhi aap type karke baat kar sakte ho.');
+}
+
+</script>
+
+</body>
+</html>
